@@ -1,0 +1,95 @@
+from keras.applications.vgg16 import VGG16
+from keras.models import Model
+from keras.preprocessing.image import ImageDataGenerator
+from keras.models import Sequential
+from keras.layers import Dense, Flatten
+import numpy as np
+from keras.models import load_model
+
+from keras.applications import VGG16
+
+# VGG16 was designed to work on 224 x 224 pixel input images sizes
+img_rows = 224
+img_cols = 224 
+
+# Loads the VGG model
+model = VGG16(weights = 'imagenet', 
+                 include_top = False, 
+                 input_shape = (img_rows, img_cols, 3))
+for layer in model.layers:
+    layer.trainable = False
+
+x = Dense(units=512, activation='relu')(model.output)
+x = Dense(units=256, activation='relu')(x)
+x = Dense(units=128, activation='relu')(x)
+x = Dense(units=64, activation='relu')(x)
+x = Flatten()(x)
+prediction = Dense(units=4, activation='softmax')(x)
+
+model = Model(inputs=model.input, outputs=prediction)
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.summary()
+
+trainDataGen = ImageDataGenerator(rescale = 1./255, zoom_range = 0.2, shear_range = 0.2, horizontal_flip = True)
+testDataGen = ImageDataGenerator(rescale = 1./255)
+
+trainingSet = trainDataGen.flow_from_directory('dataset/training_set/', target_size = (224, 224))
+
+testSet = testDataGen.flow_from_directory('dataset/testing_set/', target_size = (224, 224))
+
+r = model.fit_generator(steps_per_epoch=100, epochs=5, validation_steps=10,
+                        generator=trainingSet,validation_data=testSet,)
+
+
+model.save('face_rec_VGG_TL.h5')
+
+import os
+import cv2
+import numpy as np
+from os import listdir
+from os.path import isfile, join
+
+face_recog = {"[0]": "Akshay_Kumar",
+                      "[1]": "Ayushmann_Khurrana",
+                      "[2]": "Deepika_Padukone"}
+                      
+face_recog_n = { "Akshay_Kumar": "Akshay_Kumar",
+                      "Ayushmann_Khurrana": "Ayushmann_Khurrana",
+                      "Deepika_Padukone": "Deepika_Padukone"}
+
+def draw_test(name, pred, im):
+    face = face_recog[str(pred)]
+    BLACK = [0,0,0]
+    expanded_image = cv2.copyMakeBorder(im, 80, 0, 0, 100 ,cv2.BORDER_CONSTANT,value=BLACK)
+    cv2.putText(expanded_image,face, (20, 60) , cv2.FONT_HERSHEY_SIMPLEX,1, (0,0,255), 2)
+    cv2.imshow(name, expanded_image)
+
+def getRandomImage(path):
+    """function loads a random images from a random folder in our test path """
+    folders = list(filter(lambda x: os.path.isdir(os.path.join(path, x)), os.listdir(path)))
+    random_directory = np.random.randint(0,len(folders))
+    path_class = folders[random_directory]
+    print("Class - " + face_recog_n[str(path_class)])
+    file_path = path + path_class
+    file_names = [f for f in listdir(file_path) if isfile(join(file_path, f))]
+    random_file_index = np.random.randint(0,len(file_names))
+    image_name = file_names[random_file_index]
+    return cv2.imread(file_path+"/"+image_name)    
+
+for i in range(0,2):
+    input_im = getRandomImage("images/test/")
+    input_original = input_im.copy()
+    input_original = cv2.resize(input_original, None, fx=0.5, fy=0.5, interpolation = cv2.INTER_LINEAR)
+    
+    input_im = cv2.resize(input_im, (224, 224), interpolation = cv2.INTER_LINEAR)
+    input_im = input_im / 255.
+    input_im = input_im.reshape(1,224,224,3) 
+    # Get Prediction
+    res = np.argmax(classifier.predict(input_im, 1, verbose = 0), axis=1)
+    
+    # Show image with predicted class
+    draw_test("Prediction", res, input_original) 
+    cv2.waitKey(0)
+
+cv2.destroyAllWindows()
